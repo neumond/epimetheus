@@ -1,6 +1,6 @@
 import re
 
-METRIC_NAME_RE = re.compile(r'^[a-zA-Z_:][a-zA-Z0-9_:]*$')
+METRIC_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
@@ -9,4 +9,6 @@ def metric_name(v: str) -> bool:
 
 
 def label_name(v: str) -> bool:
+    if v.startswith('__'):
+        return False
     return LABEL_NAME_RE.fullmatch(v) is not None

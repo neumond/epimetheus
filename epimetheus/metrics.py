@@ -6,14 +6,14 @@ class Metric:
         assert validate.metric_name(name)
         self._name = name
         self._help = help
-        self._labels = labels or {}
+        self._labels = labels
 
     def labels(self, **new_labels):
         assert new_labels
         return self.__class__(
             self._name,
             help=self._help,
-            labels={**self._labels, **new_labels},
+            labels={**(self._labels or {}), **new_labels},
         )
 
 
