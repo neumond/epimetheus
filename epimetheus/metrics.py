@@ -1,10 +1,11 @@
 from copy import deepcopy
 from math import isnan, nan
+from time import time
 from typing import Tuple
 
 import attr
 
-from . import validate
+from . import output, validate
 
 
 @attr.s
@@ -12,8 +13,8 @@ class Header:
     TYPE = NotImplemented
     RESERVED_LABELS = frozenset()
 
-    _name: str = attr.ib()
-    _help: str = attr.ib(default=None)
+    _name: str = attr.ib(kw_only=True)
+    _help: str = attr.ib(kw_only=True, default=None)
 
     @_name.validator
     def _validate_name(self, attribute, value):
@@ -47,12 +48,31 @@ class Header:
 
 
 @attr.s
-class CounterState:
-    _count = attr.ib(init=False, default=0)
+class LastTimestamp:
+    _timestamp = attr.ib(kw_only=True, init=False, default=None)
+    _use_timestamp = attr.ib(kw_only=True, default=False)
+
+    @staticmethod
+    def _current_timestamp():
+        return int(time() * 1000)
+
+    def _update_timestamp(self):
+        if self._use_timestamp:
+            self._timestamp = self._current_timestamp()
+
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+        self._update_timestamp()
+
+
+@attr.s
+class CounterState(LastTimestamp):
+    _count = attr.ib(kw_only=True, init=False, default=0)
 
     def inc(self, delta: float = 1):
         assert delta >= 0
         self._count += delta
+        self._update_timestamp()
 
     def get_output(self):
         return {
@@ -65,6 +85,11 @@ class CounterState:
             'count': sum(m['count'] for m in outputs),
         }
 
+    def expose(self):
+        ls = output.label_set(self._labels)
+        ts = '' if self._timestamp is None else f' {self._timestamp}'
+        yield f'{self._name}{ls} {self._count}{ts}'
+
 
 @attr.s
 class Counter(CounterState, Header):
@@ -72,17 +97,20 @@ class Counter(CounterState, Header):
 
 
 @attr.s
-class GaugeState:
-    _value = attr.ib(init=False, default=0)
+class GaugeState(LastTimestamp):
+    _value = attr.ib(kw_only=True, init=False, default=0)
 
     def inc(self, delta: float = 1):
         self._value += delta
+        self._update_timestamp()
 
     def dec(self, delta: float = 1):
         self._value -= delta
+        self._update_timestamp()
 
     def set(self, value: float):
         self._value = value
+        self._update_timestamp()
 
     # TODO: set_to_current_time
 
@@ -106,6 +134,11 @@ class GaugeState:
             rs['value'] = sm / cn
         return rs
 
+    def expose(self):
+        ls = output.label_set(self._labels)
+        ts = '' if self._timestamp is None else f' {self._timestamp}'
+        yield f'{self._name}{ls} {self._value}{ts}'
+
 
 @attr.s
 class Gauge(GaugeState, Header):
@@ -114,8 +147,8 @@ class Gauge(GaugeState, Header):
 
 @attr.s
 class HistogramState:
-    _buckets: Tuple[float] = attr.ib(converter=lambda b: tuple(sorted(b)))
-    _counts = attr.ib(init=False)
+    _buckets: Tuple[float] = attr.ib(kw_only=True, converter=lambda b: tuple(sorted(b)))
+    _counts = attr.ib(kw_only=True, init=False)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -158,8 +191,8 @@ class Histogram(HistogramState, Header):
 
 @attr.s
 class SummaryState:
-    _buckets: Tuple[float] = attr.ib(converter=lambda b: tuple(sorted(b)))
-    _samples = attr.ib(init=False, factory=list)
+    _buckets: Tuple[float] = attr.ib(kw_only=True, converter=lambda b: tuple(sorted(b)))
+    _samples = attr.ib(kw_only=True, init=False, factory=list)
 
     def observe(self, value: float):
         self._samples.append(value)
@@ -177,7 +210,7 @@ class Summary(SummaryState, Header):
     RESERVED_LABELS = frozenset(['quantile'])
 
 
-c = Counter('name', help='help text')
+c = Counter(name='name', help='help text')
 subc = c.with_labels(name='value')
 subc.inc()
 

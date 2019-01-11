@@ -2,10 +2,13 @@ from epimetheus import Counter, Gauge, Histogram, Summary
 
 
 def test_counter():
-    c = Counter('name')
+    c = Counter(name='name')
     assert c.get_output() == {
         'count': 0,
     }
+    assert list(c.expose()) == [
+        'name 0',
+    ]
     c.inc()
     assert c.get_output() == {
         'count': 1,
@@ -22,7 +25,7 @@ def test_counter():
 
 
 def test_gauge():
-    g = Gauge('name')
+    g = Gauge(name='name')
     assert g.get_output() == {
         'value': 0,
     }
@@ -45,7 +48,7 @@ def test_gauge():
 
 
 def test_histogram():
-    h = Histogram([0.3, 0.6], 'name')
+    h = Histogram(buckets=[0.3, 0.6], name='name')
     assert h.get_output() == {
         'buckets': [0.3, 0.6],
         'counts': [0, 0, 0],
@@ -71,7 +74,7 @@ def test_histogram():
 
 
 def test_summary():
-    s = Summary([0.3, 0.6], 'name')
+    s = Summary(buckets=[0.3, 0.6], name='name')
     assert s.get_output() == {
         'buckets': [0.3, 0.6],
         'samples': [],
