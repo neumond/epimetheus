@@ -5,8 +5,6 @@ from typing import Tuple
 
 import attr
 
-from . import output, validate
-
 
 @attr.s
 class Header:

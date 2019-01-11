@@ -1,6 +1,6 @@
 import pytest
 
-from epimetheus import Counter, Gauge, Histogram, Summary
+# from epimetheus import Counter, Gauge, Histogram, Summary
 
 
 def test_counter():
