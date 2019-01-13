@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from epimetheus.metrics import Counter, Exposer, Gauge, Histogram, Summary
 from epimetheus.sample import SampleKey
 
@@ -123,16 +125,19 @@ def test_histogram():
     ]
 
 
-def test_summary(frozen_sample_time):
-    s = Summary(buckets=[0.25, 0.5, 0.75])
+def test_summary(freezer):
+    s = Summary(buckets=[0.25, 0.5, 0.75], time_window=60)
     exp = Exposer(s, SampleKey('name'))
 
     # no samples
     assert list(exp.expose()) == []
 
-    s.observe(20)
-    s.observe(30)
-    s.observe(50)
+    s.observe(20)  # t = 0
+    freezer.tick(delta=timedelta(seconds=20))
+    s.observe(30)  # t = 20
+    freezer.tick(delta=timedelta(seconds=20))
+    s.observe(50)  # t = 40
+    # exposing at t = 40
     assert list(exp.expose()) == [
         '# TYPE summary',
         'name{quantile="0.25"} 25.0',
@@ -141,3 +146,29 @@ def test_summary(frozen_sample_time):
         'name_sum 100',
         'name_count 3',
     ]
+
+    freezer.tick(delta=timedelta(seconds=30))
+    # exposing at t = 70 (first sample popped)
+    assert list(exp.expose()) == [
+        '# TYPE summary',
+        'name{quantile="0.25"} 35.0',
+        'name{quantile="0.5"} 40.0',
+        'name{quantile="0.75"} 45.0',
+        'name_sum 80',
+        'name_count 2',
+    ]
+
+    freezer.tick(delta=timedelta(seconds=20))
+    # exposing at t = 90 (second sample popped)
+    assert list(exp.expose()) == [
+        '# TYPE summary',
+        'name{quantile="0.25"} 50',
+        'name{quantile="0.5"} 50',
+        'name{quantile="0.75"} 50',
+        'name_sum 50',
+        'name_count 1',
+    ]
+
+    freezer.tick(delta=timedelta(seconds=20))
+    # exposing at t = 110 (all samples popped)
+    assert list(exp.expose()) == []

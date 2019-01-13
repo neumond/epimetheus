@@ -119,10 +119,8 @@ class Summary:
                 raise ValueError('Quantiles must be in range 0..1')
 
     def _clean_old_samples(self):
-        if not self._samples:
-            return
         before = clock() - int(self._time_window * 1000)
-        while self._samples[0].timestamp <= before:
+        while self._samples and self._samples[0].timestamp <= before:
             self._samples.popleft()
 
     def observe(self, value: float):
