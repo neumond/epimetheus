@@ -1,10 +1,13 @@
 from collections import deque
-from math import floor
+from math import ceil, floor
 from typing import Tuple
 
 import attr
 
 from .sample import SampleKey, SampleValue, clock
+
+# Metrics should be optimized for fast receiving of data
+# And relatively rare reporting
 
 
 @attr.s
@@ -48,7 +51,7 @@ class Gauge:
     # TODO: set_to_current_time
 
     def sample_group(self, skey: SampleKey):
-        yield skey, lambda: SampleValue(self._value)
+        yield skey
 
     def sample_values(self):
         yield SampleValue(self._value, self._ts)
@@ -70,7 +73,6 @@ class Histogram:
     _count = attr.ib(init=False, default=0)
 
     def __attrs_post_init__(self):
-        super().__attrs_post_init__()
         self._bcounts = [0 for _ in self._buckets]
 
     def observe(self, value: float):
@@ -117,6 +119,8 @@ class Summary:
                 raise ValueError('Quantiles must be in range 0..1')
 
     def _clean_old_samples(self):
+        if not self._samples:
+            return
         before = clock() - int(self._time_window * 1000)
         while self._samples[0].timestamp <= before:
             self._samples.popleft()
@@ -133,18 +137,31 @@ class Summary:
 
     def sample_values(self):
         self._clean_old_samples()
+        if not self._samples:
+            return
 
         quantiles = []
         ss = list(sorted(self._samples, key=lambda s: s.value))
-        for b in self._buckets:
-            idx = floor(len(ss) * b)
-            idx = min(idx, len(ss))
-            quantiles.append(ss[idx])
+        n = len(ss)
+        ss.append(ss[-1])
+
+        for qp in self._buckets:
+            k = (n - 1) * qp
+            f, c = floor(k), ceil(k)
+            if f == c:
+                qval = ss[f].value
+            else:
+                qval = (
+                    ss[f].value * (c - k)
+                    +
+                    ss[c].value * (k - f)
+                )
+            quantiles.append(qval)
 
         for v in quantiles:
             yield SampleValue(v)
-        yield SampleValue(sum(s.value for s in ss))
-        yield SampleValue(len(ss))
+        yield SampleValue(sum(s.value for s in ss[:n]))
+        yield SampleValue(n)
 
 
 @attr.s
@@ -157,14 +174,21 @@ class Exposer:
         self._keys = tuple(
             k.full_key for k in self._metric.sample_group(self._key))
 
-    def expose(self):
+    def expose_header(self):
         if self._help is not None:
             yield f'# HELP {self._help}'
         yield f'# TYPE {self._metric.TYPE}'
+
+    def expose(self):
+        he = False
         for k, v in zip(
             self._keys,
             (v.expose() for v in self._metric.sample_values()),
         ):
+            # expose header only if we have samples
+            if not he:
+                yield from self.expose_header()
+                he = True
             yield f'{k} {v}'
 
 
