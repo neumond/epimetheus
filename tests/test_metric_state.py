@@ -1,34 +1,35 @@
 import pytest
+from epimetheus.metrics import Counter, Exposer
+from epimetheus.sample import SampleKey
 
-# from epimetheus import Counter, Gauge, Histogram, Summary
 
+def test_counter(frozen_sample_time):
+    c = Counter()
+    exp = Exposer(c, SampleKey('name'))
 
-def test_counter():
-    c = Counter(name='name')
-
-    assert c.get_output() == {
-        'count': 0,
-    }
-    assert list(c.expose()) == ['name 0']
-
-    c.inc()
-    assert c.get_output() == {
-        'count': 1,
-    }
-    assert list(c.expose()) == ['name 1']
+    assert list(exp.expose()) == [
+        '# TYPE counter',
+        f'name 0 {frozen_sample_time}',
+    ]
 
     c.inc()
+    assert list(exp.expose()) == [
+        '# TYPE counter',
+        f'name 1 {frozen_sample_time}',
+    ]
+
     c.inc()
-    assert c.get_output() == {
-        'count': 3,
-    }
-    assert list(c.expose()) == ['name 3']
+    c.inc()
+    assert list(exp.expose()) == [
+        '# TYPE counter',
+        f'name 3 {frozen_sample_time}',
+    ]
 
     c.inc(10)
-    assert c.get_output() == {
-        'count': 13,
-    }
-    assert list(c.expose()) == ['name 13']
+    assert list(exp.expose()) == [
+        '# TYPE counter',
+        f'name 13 {frozen_sample_time}',
+    ]
 
 
 def test_counter_with_labels():

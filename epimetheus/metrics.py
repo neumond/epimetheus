@@ -1,216 +1,171 @@
-from copy import deepcopy
-from math import isnan, nan
-from time import time
+from collections import deque
+from math import floor
 from typing import Tuple
 
 import attr
 
-
-@attr.s
-class Header:
-    TYPE = NotImplemented
-    RESERVED_LABELS = frozenset()
-
-    _name: str = attr.ib(kw_only=True)
-    _help: str = attr.ib(kw_only=True, default=None)
-
-    @_name.validator
-    def _validate_name(self, attribute, value):
-        if not validate.metric_name(value):
-            raise ValueError('Invalid metric name')
-
-    def __attrs_post_init__(self):
-        self._labels = {}
-        self._parent = None
-        self._children = []
-
-    def with_labels(self, **new_labels):
-        if not new_labels:
-            raise ValueError('Labels required')
-        if set(new_labels.keys()) & self.RESERVED_LABELS:
-            raise ValueError('Labels must not contain reserved names')
-
-        # TODO: may be suboptimal, especially for Summary
-        # do not copy tracked data
-        ins = deepcopy(self)
-        # TODO: reset state
-        ins._labels = {**self._labels, **new_labels}
-        ins._parent = self if self._parent is None else self._parent
-        ins._parent._children.append(ins)
-        return ins
-
-    def _output_header(self):
-        if self._help is not None:
-            yield f'# HELP {self._name} {self._help}'
-        yield f'# TYPE {self._name} {self.TYPE}'
+from .sample import SampleKey, SampleValue, clock
 
 
 @attr.s
-class LastTimestamp:
-    _timestamp = attr.ib(kw_only=True, init=False, default=None)
-    _use_timestamp = attr.ib(kw_only=True, default=False)
+class Counter:
+    TYPE = 'counter'
 
-    @staticmethod
-    def _current_timestamp():
-        return int(time() * 1000)
-
-    def _update_timestamp(self):
-        if self._use_timestamp:
-            self._timestamp = self._current_timestamp()
-
-    def __attrs_post_init__(self):
-        super().__attrs_post_init__()
-        self._update_timestamp()
-
-
-@attr.s
-class CounterState(LastTimestamp):
-    _count = attr.ib(kw_only=True, init=False, default=0)
+    _count = attr.ib(init=False, default=0)
+    _ts = attr.ib(init=False, factory=clock)
 
     def inc(self, delta: float = 1):
         assert delta >= 0
         self._count += delta
-        self._update_timestamp()
+        self._ts = clock()
 
-    def get_output(self):
-        return {
-            'count': self._count,
-        }
+    def sample_group(self, skey: SampleKey):
+        yield skey
 
-    @staticmethod
-    def merge_outputs(*outputs):
-        return {
-            'count': sum(m['count'] for m in outputs),
-        }
-
-    def expose(self):
-        ls = output.label_set(self._labels)
-        ts = '' if self._timestamp is None else f' {self._timestamp}'
-        yield f'{self._name}{ls} {self._count}{ts}'
+    def sample_values(self):
+        yield SampleValue(self._count, self._ts)
 
 
 @attr.s
-class Counter(CounterState, Header):
-    TYPE = 'counter'
+class Gauge:
+    TYPE = 'gauge'
 
-
-@attr.s
-class GaugeState(LastTimestamp):
-    _value = attr.ib(kw_only=True, init=False, default=0)
+    _value = attr.ib(init=False, default=0)
+    _ts = attr.ib(init=False, factory=clock)
 
     def inc(self, delta: float = 1):
         self._value += delta
-        self._update_timestamp()
+        self._ts = clock()
 
     def dec(self, delta: float = 1):
         self._value -= delta
-        self._update_timestamp()
+        self._ts = clock()
 
     def set(self, value: float):
         self._value = value
-        self._update_timestamp()
+        self._ts = clock()
 
     # TODO: set_to_current_time
 
-    def get_output(self):
-        return {
-            'value': self._value,
-        }
+    def sample_group(self, skey: SampleKey):
+        yield skey, lambda: SampleValue(self._value)
 
-    @staticmethod
-    def merge_outputs(*outputs):
-        # TODO: implement merge strategies
-        # currently is taking average
-        rs = {'value': nan}
-        sm, cn = 0, 0
-        for m in outputs:
-            if isnan(m['value']):
-                continue
-            sm += m['value']
-            cn += 1
-        if cn > 0:
-            rs['value'] = sm / cn
-        return rs
+    def sample_values(self):
+        yield SampleValue(self._value, self._ts)
 
-    def expose(self):
-        ls = output.label_set(self._labels)
-        ts = '' if self._timestamp is None else f' {self._timestamp}'
-        yield f'{self._name}{ls} {self._value}{ts}'
+
+def to_sorted_tuple(x):
+    return tuple(sorted(x))
 
 
 @attr.s
-class Gauge(GaugeState, Header):
-    TYPE = 'gauge'
+class Histogram:
+    TYPE = 'histogram'
+    RESERVED_LABELS = frozenset(['le'])
 
-
-@attr.s
-class HistogramState:
-    _buckets: Tuple[float] = attr.ib(kw_only=True, converter=lambda b: tuple(sorted(b)))
-    _counts = attr.ib(kw_only=True, init=False)
+    _buckets: Tuple[float] = attr.ib(converter=to_sorted_tuple)
+    _bcounts = attr.ib(init=False)
+    _inf_bcount = attr.ib(init=False, default=0)
+    _sum = attr.ib(init=False, default=0)
+    _count = attr.ib(init=False, default=0)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        self._counts = [0 for _ in self._buckets]
-        self._inf_count = 0
+        self._bcounts = [0 for _ in self._buckets]
 
     def observe(self, value: float):
         # TODO: optimize, use bisect
         for index, upper in enumerate(self._buckets):
             if value <= upper:
-                self._counts[index] += 1
+                self._bcounts[index] += 1
                 break
         else:
-            self._inf_count += 1
+            self._inf_bcount += 1
+        self._sum += value
+        self._count += 1
 
-    def get_output(self):
-        return {
-            'buckets': list(self._buckets),
-            'counts': self._counts + [self._inf_count],
-        }
+    def sample_group(self, skey: SampleKey):
+        bkey = skey.with_suffix('_bucket')
+        for b in self._buckets:
+            yield bkey.with_labels(le=b)
+        yield bkey.with_labels(le='+Inf')
+        yield skey.with_suffix('_sum')
+        yield skey.with_suffix('_count')
 
-    @staticmethod
-    def merge_outputs(first, *outputs):
-        rs = {
-            'buckets': first['buckets'],
-            'counts': first['counts'],
-        }
-        for m in outputs:
-            assert rs['buckets'] == m['buckets']
-            for i, v in enumerate(m['counts']):
-                rs['counts'][i] += v
-        return rs
-
-
-@attr.s
-class Histogram(HistogramState, Header):
-    TYPE = 'histogram'
-    RESERVED_LABELS = frozenset(['le'])
+    def sample_values(self):
+        for v in self._bcounts:
+            yield SampleValue(v)
+        yield SampleValue(self._inf_bcount)
+        yield SampleValue(self._sum)
+        yield SampleValue(self._count)
 
 
 @attr.s
-class SummaryState:
-    _buckets: Tuple[float] = attr.ib(kw_only=True, converter=lambda b: tuple(sorted(b)))
-    _samples = attr.ib(kw_only=True, init=False, factory=list)
-
-    def observe(self, value: float):
-        self._samples.append(value)
-
-    def get_output(self):
-        return {
-            'buckets': list(self._buckets),
-            'samples': self._samples.copy(),
-        }
-
-
-@attr.s
-class Summary(SummaryState, Header):
+class Summary:
     TYPE = 'summary'
     RESERVED_LABELS = frozenset(['quantile'])
 
+    # TODO: validate range 0..1
+    _buckets: Tuple[float] = attr.ib(converter=to_sorted_tuple)
+    _time_window: float = attr.ib(default=3600)
+    _samples = attr.ib(init=False, factory=deque)
 
-c = Counter(name='name', help='help text')
-subc = c.with_labels(name='value')
-subc.inc()
+    @_buckets.validator
+    def _validate_buckets(self, attribute, value):
+        for x in value:
+            if not (0 <= x <= 1):
+                raise ValueError('Quantiles must be in range 0..1')
+
+    def _clean_old_samples(self):
+        before = clock() - int(self._time_window * 1000)
+        while self._samples[0].timestamp <= before:
+            self._samples.popleft()
+
+    def observe(self, value: float):
+        self._samples.append(SampleValue.create(value, clock()))
+        self._clean_old_samples()
+
+    def sample_group(self, skey: SampleKey):
+        for b in self._buckets:
+            yield skey.with_labels(quantile=b)
+        yield skey.with_suffix('_sum')
+        yield skey.with_suffix('_count')
+
+    def sample_values(self):
+        self._clean_old_samples()
+
+        quantiles = []
+        ss = list(sorted(self._samples, key=lambda s: s.value))
+        for b in self._buckets:
+            idx = floor(len(ss) * b)
+            idx = min(idx, len(ss))
+            quantiles.append(ss[idx])
+
+        for v in quantiles:
+            yield SampleValue(v)
+        yield SampleValue(sum(s.value for s in ss))
+        yield SampleValue(len(ss))
 
 
-__all__ = ('Counter', 'Gauge', 'Histogram', 'Summary')
+@attr.s
+class Exposer:
+    _metric = attr.ib()
+    _key: SampleKey = attr.ib()
+    _help: str = attr.ib(default=None)
+
+    def __attrs_post_init__(self):
+        self._keys = tuple(
+            k.full_key for k in self._metric.sample_group(self._key))
+
+    def expose(self):
+        if self._help is not None:
+            yield f'# HELP {self._help}'
+        yield f'# TYPE {self._metric.TYPE}'
+        for k, v in zip(
+            self._keys,
+            (v.expose() for v in self._metric.sample_values()),
+        ):
+            yield f'{k} {v}'
+
+
+__all__ = ('Counter', 'Gauge', 'Histogram', 'Summary', 'Exposer')

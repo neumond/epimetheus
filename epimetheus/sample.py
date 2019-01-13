@@ -53,7 +53,7 @@ class SampleKey:
 
     @cached_property
     def full_key(self):
-        return f'{self.name}{self.expose_label_set(self._labels)}'
+        return f'{self._name}{self.expose_label_set(self._labels)}'
 
     def expose(self):
         return self.full_key
@@ -67,7 +67,7 @@ class SampleValue:
     @classmethod
     def create(cls, value: float, use_ts=False):
         if use_ts:
-            return cls(value, int(time.time() * 1000))
+            return cls(value, clock())
         return cls(value)
 
     @staticmethod
@@ -88,3 +88,7 @@ class SampleValue:
         if self.timestamp is not None:
             return f'{self.expose_value(self.value)} {self.expose_timestamp(self.timestamp)}'
         return f'{self.expose_value(self.value)}'
+
+
+def clock():
+    return int(time.time() * 1000)
