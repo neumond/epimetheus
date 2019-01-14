@@ -7,7 +7,7 @@ from sortedcontainers import SortedDict
 from . import metrics
 from .sample import SampleKey
 
-__all__ = ('registry', 'counter', 'gauge', 'histogram', 'summary')
+__all__ = ('counter', 'gauge', 'histogram', 'summary')
 
 
 @attr.s
