@@ -4,16 +4,22 @@ import time
 from typing import Dict
 
 import attr
-from cached_property import cached_property
 
+__all__ = ('SampleKey', 'SampleValue')
 METRIC_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
-@attr.s
+def convert_labels(value):
+    return {k: str(v) for k, v in value.items()}
+
+
+@attr.s(cmp=True, frozen=True)
 class SampleKey:
-    _name: str = attr.ib()
-    _labels: Dict[str, str] = attr.ib(factory=dict)
+    _name: str = attr.ib(cmp=False, repr=False)
+    _labels: Dict[str, str] = attr.ib(
+        factory=dict, converter=convert_labels, cmp=False, repr=False)
+    _line: str = attr.ib(init=False, cmp=True, repr=True)
 
     @_name.validator
     def _validate_name(self, attribute, value):
@@ -51,12 +57,17 @@ class SampleKey:
         x = ','.join(f'{k}="{cls.expose_label_value(v)}"' for k, v in labels.items())
         return '{' + x + '}'
 
-    @cached_property
-    def full_key(self):
-        return f'{self._name}{self.expose_label_set(self._labels)}'
+    def __attrs_post_init__(self):
+        line = f'{self._name}{self.expose_label_set(self._labels)}'
+        object.__setattr__(self, '_line', line)
 
-    def expose(self):
-        return self.full_key
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def full_key(self):
+        return self._line
 
 
 @attr.s

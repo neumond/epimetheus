@@ -9,6 +9,8 @@ from .sample import SampleKey, SampleValue, clock
 # Metrics should be optimized for fast receiving of data
 # And relatively rare reporting
 
+__all__ = ('Counter', 'Gauge', 'Histogram', 'Summary', 'Exposer')
+
 
 @attr.s
 class Counter:
@@ -175,7 +177,7 @@ class Exposer:
     def expose_header(self):
         if self._help is not None:
             yield f'# HELP {self._help}'
-        yield f'# TYPE {self._metric.TYPE}'
+        yield f'# TYPE {self._key.name} {self._metric.TYPE}'
 
     def expose(self):
         he = False
@@ -188,6 +190,3 @@ class Exposer:
                 yield from self.expose_header()
                 he = True
             yield f'{k} {v}'
-
-
-__all__ = ('Counter', 'Gauge', 'Histogram', 'Summary', 'Exposer')

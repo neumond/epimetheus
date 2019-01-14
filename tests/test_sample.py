@@ -83,3 +83,20 @@ class TestValidation:
             SampleKey(name='name', labels={text: 'value'})
 
         self._do_test(do, is_valid)
+
+
+class TestSampleKey:
+    def test_equality(self):
+        ski = SampleKey(name='name', labels={'x': 3})
+        sks = SampleKey(name='name', labels={'x': '3'})
+        assert ski == sks
+
+    def test_hashable(self):
+        hash(SampleKey(name='name'))
+        hash(SampleKey(name='name', labels={'x': 3}))
+
+    def test_label_order(self):
+        k = SampleKey(name='name', labels={'k': 1, 'a': 2})
+        assert k.full_key == 'name{k="1",a="2"}'
+        kb = k.with_labels(b=3)
+        assert kb.full_key == 'name{k="1",a="2",b="3"}'
