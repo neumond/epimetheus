@@ -198,3 +198,13 @@ def test_summary(freezer):
     freezer.tick(delta=timedelta(seconds=20))
     # exposing at t = 110 (all samples popped)
     assert list(g.expose()) == []
+
+
+def test_group_caching():
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Counter,
+    )
+    assert g.with_labels() is g.with_labels()
+    assert g.with_labels(lol=3) is g.with_labels(lol=3)
+    assert g.with_labels() is not g.with_labels(lol=3)
