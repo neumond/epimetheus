@@ -190,3 +190,40 @@ class Exposer:
                 yield from self.expose_header()
                 he = True
             yield f'{k} {v}'
+
+
+@attr.s
+class Group:
+    _key: SampleKey = attr.ib()
+    _mcls: type = attr.ib()
+    _args: tuple = attr.ib(default=())
+    _kwargs: dict = attr.ib(factory=dict)
+    _help: str = attr.ib(default=None)
+
+    _items: dict = attr.ib(init=False, factory=dict)
+    _rendered_keys: dict = attr.ib(init=False, factory=dict)
+
+    def with_labels(self, **labels):
+        k = self._key.with_labels(**labels)
+        if k in self._items:
+            return self._items[k]
+        # TODO: RESERVED_LABELS
+        m = self._mcls(*self._args, **self._kwargs)
+        self._items[k] = m
+        self._rendered_keys[k] = tuple(rk.full_key for rk in m.sample_group(k))
+        return m
+
+    def expose_header(self):
+        if self._help is not None:
+            yield f'# HELP {self._help}'
+        yield f'# TYPE {self._key.name} {self._mcls.TYPE}'
+
+    def expose(self):
+        he = False
+        for k, m in self._items.items():
+            for rk, v in zip(self._rendered_keys[k], m.sample_values()):
+                # expose header only if we have samples
+                if not he:
+                    yield from self.expose_header()
+                    he = True
+                yield f'{rk} {v.expose()}'

@@ -1,88 +1,110 @@
 from datetime import timedelta
 
-from epimetheus.metrics import Counter, Exposer, Gauge, Histogram, Summary
+from epimetheus.metrics import Counter, Exposer, Gauge, Group, Histogram, Summary
 from epimetheus.sample import SampleKey
 
 
 def test_counter(frozen_sample_time):
-    c = Counter()
-    exp = Exposer(c, SampleKey('name'))
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Counter,
+    )
+    c = g.with_labels()
 
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name counter',
         f'name 0 {frozen_sample_time}',
     ]
 
     c.inc()
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name counter',
         f'name 1 {frozen_sample_time}',
     ]
 
     c.inc()
     c.inc()
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name counter',
         f'name 3 {frozen_sample_time}',
     ]
 
     c.inc(10)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name counter',
         f'name 13 {frozen_sample_time}',
     ]
 
 
-def test_counter_with_labels(frozen_sample_time):
-    c = Counter()
-    exp = Exposer(c, SampleKey('name').with_labels(key='value', x=300))
+def test_counters_with_labels(frozen_sample_time):
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Counter,
+    )
+    c = g.with_labels(key='value', x=300)
 
     c.inc(45)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name counter',
-        f'name{{key="value",x="300"}} 45 {frozen_sample_time}',
+        'name{key="value",x="300"} 45 ' f'{frozen_sample_time}',
+    ]
+
+    c2 = g.with_labels(key='another', j=18)
+    c2.inc(2)
+
+    assert list(g.expose()) == [
+        '# TYPE name counter',
+        'name{key="value",x="300"} 45 ' f'{frozen_sample_time}',
+        'name{key="another",j="18"} 2 ' f'{frozen_sample_time}',
     ]
 
 
 def test_gauge(frozen_sample_time):
-    g = Gauge()
-    exp = Exposer(g, SampleKey('name'))
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Gauge,
+    )
+    m = g.with_labels()
 
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name gauge',
         f'name 0 {frozen_sample_time}',
     ]
 
-    g.inc(2)
-    assert list(exp.expose()) == [
+    m.inc(2)
+    assert list(g.expose()) == [
         '# TYPE name gauge',
         f'name 2 {frozen_sample_time}',
     ]
 
-    g.set(7)
-    assert list(exp.expose()) == [
+    m.set(7)
+    assert list(g.expose()) == [
         '# TYPE name gauge',
         f'name 7 {frozen_sample_time}',
     ]
 
-    g.inc(2)
-    assert list(exp.expose()) == [
+    m.inc(2)
+    assert list(g.expose()) == [
         '# TYPE name gauge',
         f'name 9 {frozen_sample_time}',
     ]
 
-    g.dec(6)
-    assert list(exp.expose()) == [
+    m.dec(6)
+    assert list(g.expose()) == [
         '# TYPE name gauge',
         f'name 3 {frozen_sample_time}',
     ]
 
 
 def test_histogram():
-    h = Histogram(buckets=[0.3, 0.6])
-    exp = Exposer(h, SampleKey('name'))
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Histogram,
+        kwargs={'buckets': [0.3, 0.6]},
+    )
+    h = g.with_labels()
 
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name histogram',
         'name_bucket{le="0.3"} 0',
         'name_bucket{le="0.6"} 0',
@@ -92,7 +114,7 @@ def test_histogram():
     ]
 
     h.observe(0.5)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name histogram',
         'name_bucket{le="0.3"} 0',
         'name_bucket{le="0.6"} 1',
@@ -104,7 +126,7 @@ def test_histogram():
     h.observe(0.2)
     h.observe(0.11)
     h.observe(-5)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name histogram',
         'name_bucket{le="0.3"} 3',
         'name_bucket{le="0.6"} 1',
@@ -115,7 +137,7 @@ def test_histogram():
 
     h.observe(26)
     h.observe(48)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name histogram',
         'name_bucket{le="0.3"} 3',
         'name_bucket{le="0.6"} 1',
@@ -126,11 +148,15 @@ def test_histogram():
 
 
 def test_summary(freezer):
-    s = Summary(buckets=[0.25, 0.5, 0.75], time_window=60)
-    exp = Exposer(s, SampleKey('name'))
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Summary,
+        kwargs={'buckets': [0.25, 0.5, 0.75], 'time_window': 60},
+    )
+    s = g.with_labels()
 
     # no samples
-    assert list(exp.expose()) == []
+    assert list(g.expose()) == []
 
     s.observe(20)  # t = 0
     freezer.tick(delta=timedelta(seconds=20))
@@ -138,7 +164,7 @@ def test_summary(freezer):
     freezer.tick(delta=timedelta(seconds=20))
     s.observe(50)  # t = 40
     # exposing at t = 40
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name summary',
         'name{quantile="0.25"} 25.0',
         'name{quantile="0.5"} 30',
@@ -149,7 +175,7 @@ def test_summary(freezer):
 
     freezer.tick(delta=timedelta(seconds=30))
     # exposing at t = 70 (first sample popped)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name summary',
         'name{quantile="0.25"} 35.0',
         'name{quantile="0.5"} 40.0',
@@ -160,7 +186,7 @@ def test_summary(freezer):
 
     freezer.tick(delta=timedelta(seconds=20))
     # exposing at t = 90 (second sample popped)
-    assert list(exp.expose()) == [
+    assert list(g.expose()) == [
         '# TYPE name summary',
         'name{quantile="0.25"} 50',
         'name{quantile="0.5"} 50',
@@ -171,4 +197,4 @@ def test_summary(freezer):
 
     freezer.tick(delta=timedelta(seconds=20))
     # exposing at t = 110 (all samples popped)
-    assert list(exp.expose()) == []
+    assert list(g.expose()) == []
