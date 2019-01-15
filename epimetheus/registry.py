@@ -12,24 +12,22 @@ __all__ = ('counter', 'gauge', 'histogram', 'summary')
 
 @attr.s
 class Registry:
-    _metrics = attr.ib(init=False, factory=dict)
-    _exposers = attr.ib(init=False, factory=SortedDict)
+    _groups = attr.ib(init=False, factory=dict)
 
     def get(self, key: SampleKey):
-        return self._metrics.get(key)
+        return self._groups.get(key)
 
-    def register(self, key, instance, help=None):
-        assert key not in self._metrics
-        self._metrics[key] = instance
-        self._exposers[key] = metrics.Exposer(instance, key, help)
+    def register(self, key, group):
+        assert key not in self._groups
+        self._groups[key] = group
 
     def unregister(self, key):
-        del self._metrics[key]
-        del self._exposers[key]
+        del self._groups[key]
 
     def expose(self):
-        for exp in self._exposers.values():
+        for exp in self._groups.values():
             yield from exp.expose()
+            yield ''
 
 
 registry = Registry()
@@ -44,35 +42,38 @@ def _create_builder(fn):
         **kwargs,
     ):
         key = SampleKey(name, labels)
-        instance = registry.get(key)
+        if registry.get(key) is not None:
+            raise KeyError('Attempt to create same metric group twice')
 
         # we do not check there equality of instances
         # TODO: may be we should?
 
-        if instance is None:
-            instance = fn(**kwargs)
-            registry.register(key, instance, help=help)
-        return instance
+        group = metrics.Group(
+            key=key,
+            mcls=fn(),
+            kwargs=kwargs,
+            help=help,
+        )
+        registry.register(key, group)
+        return group
     return builder
 
 
 @_create_builder
-def counter() -> metrics.Counter:
-    return metrics.Counter()
+def counter():
+    return metrics.Counter
 
 
 @_create_builder
-def gauge() -> metrics.Gauge:
-    return metrics.Gauge()
+def gauge():
+    return metrics.Gauge
 
 
 @_create_builder
-def histogram(*, buckets: Tuple[float]) -> metrics.Histogram:
-    return metrics.Histogram(buckets)
+def histogram():
+    return metrics.Histogram
 
 
 @_create_builder
-def summary(
-    *, buckets: Tuple[float], time_window: float = attr.NOTHING,
-) -> metrics.Summary:
-    return metrics.Summary(buckets, time_window)
+def summary():
+    return metrics.Summary
