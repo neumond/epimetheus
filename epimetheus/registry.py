@@ -1,8 +1,7 @@
 from functools import wraps
-from typing import Dict, Tuple
+from typing import Dict
 
 import attr
-from sortedcontainers import SortedDict
 
 from . import metrics
 from .sample import SampleKey
