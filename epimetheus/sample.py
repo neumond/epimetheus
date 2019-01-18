@@ -4,6 +4,7 @@ import time
 from typing import Dict
 
 import attr
+from sortedcontainers import SortedDict
 
 __all__ = ('SampleKey', 'SampleValue')
 METRIC_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
@@ -19,7 +20,8 @@ class SampleKey:
     _name: str = attr.ib(cmp=False, repr=False)
     _labels: Dict[str, str] = attr.ib(
         factory=dict, converter=convert_labels, cmp=False, repr=False)
-    _line: str = attr.ib(init=False, cmp=True, repr=True)
+    _line: str = attr.ib(init=False, cmp=False, repr=True)
+    _cmp_line: str = attr.ib(init=False, cmp=True, repr=False)
 
     @_name.validator
     def _validate_name(self, attribute, value):
@@ -60,6 +62,8 @@ class SampleKey:
     def __attrs_post_init__(self):
         line = f'{self._name}{self.expose_label_set(self._labels)}'
         object.__setattr__(self, '_line', line)
+        line = f'{self._name}{self.expose_label_set(SortedDict(self._labels))}'
+        object.__setattr__(self, '_cmp_line', line)
 
     @property
     def name(self):

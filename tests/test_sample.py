@@ -91,6 +91,16 @@ class TestSampleKey:
         sks = SampleKey(name='name', labels={'x': '3'})
         assert ski == sks
 
+    def test_equality2(self):
+        a = SampleKey(name='name', labels={'a': 1, 'b': 2})
+        b = SampleKey(name='name', labels={'b': 2, 'a': 1})
+        assert a == b
+
+        d = {}
+        d[a] = 3
+        d[b] = 4
+        assert d[a] == 4
+
     def test_hashable(self):
         hash(SampleKey(name='name'))
         hash(SampleKey(name='name', labels={'x': 3}))
