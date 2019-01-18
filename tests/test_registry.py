@@ -1,16 +1,14 @@
 import pytest
-from epimetheus.registry import Registry, counter
+from epimetheus.registry import Registry
 
 
 @pytest.fixture
-def clean_registry(mocker):
-    reg = Registry()
-    mocker.patch('epimetheus.registry.registry', new=reg)
-    return reg
+def registry():
+    return Registry()
 
 
-def test_all_at_once(clean_registry, frozen_sample_time):
-    c = counter(
+def test_all_at_once(registry, frozen_sample_time):
+    c = registry.counter(
         name='http_requests_total',
         labels={'method': 'post'},
     )
@@ -24,7 +22,7 @@ def test_all_at_once(clean_registry, frozen_sample_time):
     assert c200 is c200a
     c200a.inc()
 
-    assert list(clean_registry.expose()) == [
+    assert list(registry.expose()) == [
         '# TYPE http_requests_total counter',
         'http_requests_total{method="post",code="200"} 1027 ' + f'{frozen_sample_time}',
         'http_requests_total{method="post",code="400"} 3 ' + f'{frozen_sample_time}',

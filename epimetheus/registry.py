@@ -1,4 +1,3 @@
-from functools import wraps
 from typing import Dict
 
 import attr
@@ -6,7 +5,34 @@ import attr
 from . import metrics
 from .sample import SampleKey
 
-__all__ = ('counter', 'gauge', 'histogram', 'summary')
+__all__ = ('Registry', )
+
+
+def _create_builder(mcls):
+    def builder(
+        self,
+        *,
+        name: str,
+        labels: Dict[str, str] = attr.NOTHING,
+        help: str = None,
+        **kwargs,
+    ):
+        key = SampleKey(name, labels)
+        if self.get(key) is not None:
+            raise KeyError('Attempt to create same metric group twice')
+
+        # we do not check there equality of instances
+        # TODO: may be we should?
+
+        group = metrics.Group(
+            key=key,
+            mcls=mcls,
+            kwargs=kwargs,
+            help=help,
+        )
+        self.register(key, group)
+        return group
+    return builder
 
 
 @attr.s
@@ -28,51 +54,7 @@ class Registry:
             yield from exp.expose()
             yield ''
 
-
-registry = Registry()
-
-
-def _create_builder(fn):
-    @wraps(fn)
-    def builder(
-        *, name: str,
-        labels: Dict[str, str] = attr.NOTHING,
-        help: str = None,
-        **kwargs,
-    ):
-        key = SampleKey(name, labels)
-        if registry.get(key) is not None:
-            raise KeyError('Attempt to create same metric group twice')
-
-        # we do not check there equality of instances
-        # TODO: may be we should?
-
-        group = metrics.Group(
-            key=key,
-            mcls=fn(),
-            kwargs=kwargs,
-            help=help,
-        )
-        registry.register(key, group)
-        return group
-    return builder
-
-
-@_create_builder
-def counter():
-    return metrics.Counter
-
-
-@_create_builder
-def gauge():
-    return metrics.Gauge
-
-
-@_create_builder
-def histogram():
-    return metrics.Histogram
-
-
-@_create_builder
-def summary():
-    return metrics.Summary
+    counter = _create_builder(metrics.Counter)
+    gauge = _create_builder(metrics.Gauge)
+    histogram = _create_builder(metrics.Histogram)
+    summary = _create_builder(metrics.Summary)
