@@ -6,7 +6,7 @@ from typing import Dict
 import attr
 from sortedcontainers import SortedDict
 
-__all__ = ('SampleKey', 'SampleValue')
+__all__ = ('SampleKey', 'SampleValue', 'clock')
 METRIC_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
