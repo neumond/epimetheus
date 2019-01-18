@@ -9,7 +9,7 @@ from .sample import SampleKey, SampleValue, clock
 # Metrics should be optimized for fast receiving of data
 # And relatively rare reporting
 
-__all__ = ('Counter', 'Gauge', 'Histogram', 'Summary', 'Exposer')
+__all__ = ('Counter', 'Gauge', 'Histogram', 'Summary')
 
 
 @attr.s
@@ -162,34 +162,6 @@ class Summary:
             yield SampleValue(v)
         yield SampleValue(sum(s.value for s in ss[:n]))
         yield SampleValue(n)
-
-
-@attr.s
-class Exposer:
-    _metric = attr.ib()
-    _key: SampleKey = attr.ib()
-    _help: str = attr.ib(default=None)
-
-    def __attrs_post_init__(self):
-        self._keys = tuple(
-            k.full_key for k in self._metric.sample_group(self._key))
-
-    def expose_header(self):
-        if self._help is not None:
-            yield f'# HELP {self._help}'
-        yield f'# TYPE {self._key.name} {self._metric.TYPE}'
-
-    def expose(self):
-        he = False
-        for k, v in zip(
-            self._keys,
-            (v.expose() for v in self._metric.sample_values()),
-        ):
-            # expose header only if we have samples
-            if not he:
-                yield from self.expose_header()
-                he = True
-            yield f'{k} {v}'
 
 
 @attr.s

@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from epimetheus.metrics import Counter, Exposer, Gauge, Group, Histogram, Summary
+from epimetheus.metrics import Counter, Gauge, Group, Histogram, Summary
 from epimetheus.sample import SampleKey
 
 
