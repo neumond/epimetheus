@@ -182,7 +182,7 @@ class Group:
         # TODO: RESERVED_LABELS
         m = self._mcls(*self._args, **self._kwargs)
         self._items[k] = m
-        self._rendered_keys[k] = tuple(rk.full_key for rk in m.sample_group(k))
+        self._rendered_keys[k] = tuple(rk.expose() for rk in m.sample_group(k))
         return m
 
     def expose_header(self):

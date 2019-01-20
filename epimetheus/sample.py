@@ -69,8 +69,7 @@ class SampleKey:
     def name(self):
         return self._name
 
-    @property
-    def full_key(self):
+    def expose(self):
         return self._line
 
 

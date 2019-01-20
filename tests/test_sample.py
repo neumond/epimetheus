@@ -107,6 +107,6 @@ class TestSampleKey:
 
     def test_label_order(self):
         k = SampleKey(name='name', labels={'k': 1, 'a': 2})
-        assert k.full_key == 'name{k="1",a="2"}'
+        assert k.expose() == 'name{k="1",a="2"}'
         kb = k.with_labels(b=3)
-        assert kb.full_key == 'name{k="1",a="2",b="3"}'
+        assert kb.expose() == 'name{k="1",a="2",b="3"}'
