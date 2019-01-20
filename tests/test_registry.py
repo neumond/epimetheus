@@ -1,13 +1,9 @@
-import pytest
 from epimetheus.registry import Registry
 
 
-@pytest.fixture
-def registry():
-    return Registry()
+def test_all_at_once(frozen_sample_time):
+    registry = Registry()
 
-
-def test_all_at_once(registry, frozen_sample_time):
     c = registry.counter(
         name='http_requests_total',
         labels={'method': 'post'},
