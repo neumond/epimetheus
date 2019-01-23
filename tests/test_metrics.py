@@ -208,3 +208,81 @@ def test_group_caching():
     assert g.with_labels() is g.with_labels()
     assert g.with_labels(lol=3) is g.with_labels(lol=3)
     assert g.with_labels() is not g.with_labels(lol=3)
+
+
+def test_counter_without_clock():
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Counter,
+        kwargs={'use_clock': False},
+    )
+    c = g.with_labels()
+
+    assert list(g.expose()) == [
+        '# TYPE name counter',
+        f'name 0',
+    ]
+
+    c.inc()
+    assert list(g.expose()) == [
+        '# TYPE name counter',
+        f'name 1',
+    ]
+
+
+def test_gauge_without_clock():
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Gauge,
+        kwargs={'use_clock': False},
+    )
+    m = g.with_labels()
+
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 0',
+    ]
+
+    m.set(7)
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 7',
+    ]
+
+
+def test_gauge_only_if_changed(ts_freezer):
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Gauge,
+        kwargs={'reclock_if_changed': True},
+    )
+    m = g.with_labels()
+
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 0 {ts_freezer.get_ts()}',
+    ]
+
+    ts_freezer.tick(delta=timedelta(seconds=30))
+    time7 = ts_freezer.get_ts()
+    m.set(7)
+
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 7 {time7}',
+    ]
+
+    ts_freezer.tick(delta=timedelta(seconds=30))
+    m.set(7)
+
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 7 {time7}',
+    ]
+
+    m.set(3)
+
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 3 {ts_freezer.get_ts()}',
+    ]

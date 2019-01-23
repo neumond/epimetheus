@@ -13,16 +13,31 @@ __all__ = ('Counter', 'Gauge', 'Histogram', 'Summary')
 
 
 @attr.s
-class Counter:
+class MetricWithTimestamp:
+    _use_clock: bool = attr.ib(default=True)
+    _reclock_if_changed: bool = attr.ib(default=False)
+    _ts = attr.ib(init=False, default=None)
+
+    def __attrs_post_init__(self):
+        self._update_ts(1)
+
+    def _update_ts(self, vdiff):
+        if not self._use_clock:
+            return
+        if (not self._reclock_if_changed) or vdiff:
+            self._ts = clock()
+
+
+@attr.s
+class Counter(MetricWithTimestamp):
     TYPE = 'counter'
 
     _count = attr.ib(init=False, default=0)
-    _ts = attr.ib(init=False, factory=clock)
 
     def inc(self, delta: float = 1):
         assert delta >= 0
         self._count += delta
-        self._ts = clock()
+        self._update_ts(delta)
 
     def sample_group(self, skey: SampleKey):
         yield skey
@@ -32,23 +47,23 @@ class Counter:
 
 
 @attr.s
-class Gauge:
+class Gauge(MetricWithTimestamp):
     TYPE = 'gauge'
 
     _value = attr.ib(init=False, default=0)
-    _ts = attr.ib(init=False, factory=clock)
 
     def inc(self, delta: float = 1):
         self._value += delta
-        self._ts = clock()
+        self._update_ts(delta)
 
     def dec(self, delta: float = 1):
         self._value -= delta
-        self._ts = clock()
+        self._update_ts(delta)
 
     def set(self, value: float):
+        vdiff = value - self._value
         self._value = value
-        self._ts = clock()
+        self._update_ts(vdiff)
 
     # TODO: set_to_current_time
 
