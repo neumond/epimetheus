@@ -65,6 +65,11 @@ class Gauge(MetricWithTimestamp):
         self._value = value
         self._update_ts(vdiff)
 
+    def set_with_timestamp(self, value: float, ts: int):
+        "For metrics like daily active users"
+        self._value = value
+        self._ts = ts
+
     # TODO: set_to_current_time
 
     def sample_group(self, skey: SampleKey):

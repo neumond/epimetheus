@@ -286,3 +286,18 @@ def test_gauge_only_if_changed(ts_freezer):
         '# TYPE name gauge',
         f'name 3 {ts_freezer.get_ts()}',
     ]
+
+
+def test_gauge_set_with_timestamp():
+    g = Group(
+        key=SampleKey('name'),
+        mcls=Gauge,
+    )
+    m = g.with_labels()
+
+    m.set_with_timestamp(3, 5000)
+
+    assert list(g.expose()) == [
+        '# TYPE name gauge',
+        f'name 3 5000',
+    ]
