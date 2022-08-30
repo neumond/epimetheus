@@ -21,8 +21,9 @@ class TestExposeOutput:
     def test_label_set(self):
         assert SampleKey.expose_label_set({'status': '500'}) == \
             r'{status="500"}'
-        assert SampleKey.expose_label_set({'status': 500, 'endpoint': '/path'}) == \
-            r'{status="500",endpoint="/path"}'
+        assert SampleKey.expose_label_set(
+            {'status': 500, 'endpoint': '/path'}
+        ) == r'{status="500",endpoint="/path"}'
         assert SampleKey.expose_label_set({'value': '"'}) == \
             r'{value="\""}'
 

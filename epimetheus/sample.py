@@ -1,9 +1,9 @@
 import math
 import re
 import time
+from dataclasses import dataclass, field
 from typing import Dict
 
-import attr
 from sortedcontainers import SortedDict
 
 __all__ = ('SampleKey', 'SampleValue', 'clock')
@@ -15,68 +15,72 @@ def convert_labels(value):
     return {k: str(v) for k, v in value.items()}
 
 
-@attr.s(cmp=True, frozen=True)
+@dataclass(eq=True, frozen=True)
 class SampleKey:
-    _name: str = attr.ib(cmp=False, repr=False)
-    _labels: Dict[str, str] = attr.ib(
-        factory=dict, converter=convert_labels, cmp=False, repr=False)
-    _line: str = attr.ib(init=False, cmp=False, repr=True)
-    _cmp_line: str = attr.ib(init=False, cmp=True, repr=False)
+    name: str = field(compare=False, repr=False)
+    labels: Dict[str, str] = field(
+        default_factory=dict, compare=False, repr=False)
+    _line: str = field(init=False, compare=False, repr=True)
+    _cmp_line: str = field(init=False, compare=True, repr=False)
 
-    @_name.validator
-    def _validate_name(self, attribute, value):
-        if METRIC_NAME_RE.fullmatch(value) is None:
+    def __post_init__(self):
+        if METRIC_NAME_RE.fullmatch(self.name) is None:
             raise ValueError('Invalid sample name')
 
-    @_labels.validator
-    def _validate_labels(self, attribute, value):
-        for k, v in value.items():
+        object.__setattr__(self, 'labels', convert_labels(self.labels))
+        for k, v in self.labels.items():
             if k.startswith('__'):
-                raise ValueError('Label names starting with __ are reserved by Prometheus')
+                raise ValueError(
+                    'Label names starting with __ are reserved by Prometheus')
             if LABEL_NAME_RE.fullmatch(k) is None:
                 raise ValueError('Invalid label name')
 
+        # TODO: need this difference?
+        object.__setattr__(
+            self, '_line',
+            f'{self.name}{self.expose_label_set(self.labels)}')
+        object.__setattr__(
+            self, '_cmp_line',
+            f'{self.name}{self.expose_label_set(SortedDict(self.labels))}')
+
     def with_suffix(self, suffix: str) -> 'SampleKey':
         return type(self)(
-            name=self._name + suffix,
-            labels=self._labels,
+            name=self.name + suffix,
+            labels=self.labels,
         )
 
     def with_labels(self, **new_labels: Dict[str, str]):
         return type(self)(
-            name=self._name,
-            labels={**self._labels, **new_labels},
+            name=self.name,
+            labels={**self.labels, **new_labels},
         )
 
     @staticmethod
     def expose_label_value(v) -> str:
-        return str(v).replace('\\', r'\\').replace('\n', r'\n').replace('"', r'\"')
+        return (
+            str(v)
+            .replace('\\', r'\\')
+            .replace('\n', r'\n')
+            .replace('"', r'\"')
+        )
 
     @classmethod
     def expose_label_set(cls, labels: Dict[str, str]) -> str:
         if not labels:
             return ''
-        x = ','.join(f'{k}="{cls.expose_label_value(v)}"' for k, v in labels.items())
+        x = ','.join(
+            f'{k}="{cls.expose_label_value(v)}"'
+            for k, v in labels.items())
         return '{' + x + '}'
-
-    def __attrs_post_init__(self):
-        line = f'{self._name}{self.expose_label_set(self._labels)}'
-        object.__setattr__(self, '_line', line)
-        line = f'{self._name}{self.expose_label_set(SortedDict(self._labels))}'
-        object.__setattr__(self, '_cmp_line', line)
-
-    @property
-    def name(self):
-        return self._name
 
     def expose(self):
         return self._line
 
 
-@attr.s
+@dataclass
 class SampleValue:
-    value: float = attr.ib(default=0)
-    timestamp: int = attr.ib(default=None)
+    value: float = 0.0
+    timestamp: int = None
 
     @classmethod
     def create(cls, value: float, use_ts=False):
@@ -99,9 +103,10 @@ class SampleValue:
         return str(ts)
 
     def expose(self):
+        val = self.expose_value(self.value)
         if self.timestamp is not None:
-            return f'{self.expose_value(self.value)} {self.expose_timestamp(self.timestamp)}'
-        return f'{self.expose_value(self.value)}'
+            return f'{val} {self.expose_timestamp(self.timestamp)}'
+        return f'{val}'
 
 
 def clock():

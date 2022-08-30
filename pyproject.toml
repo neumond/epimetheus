@@ -6,11 +6,9 @@ build-backend = "flit_core.buildapi"
 name = "epimetheus"
 authors = [{name = "neumond", email = "knifeslaughter@gmail.com"}]
 classifiers = ["License :: OSI Approved :: MIT License"]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dynamic = ["version", "description"]
 dependencies = [
-    "attrs",
-    "cached-property",
     "sortedcontainers",
 ]
 

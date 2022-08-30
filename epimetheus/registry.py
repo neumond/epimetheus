@@ -1,6 +1,5 @@
+from dataclasses import dataclass, field, MISSING
 from typing import Dict
-
-import attr
 
 from . import metrics
 from .sample import SampleKey
@@ -13,7 +12,7 @@ def _create_builder(mcls):
         self,
         *,
         name: str,
-        labels: Dict[str, str] = attr.NOTHING,
+        labels: Dict[str, str] = MISSING,
         help: str = None,
         **kwargs,
     ):
@@ -35,9 +34,9 @@ def _create_builder(mcls):
     return builder
 
 
-@attr.s
+@dataclass
 class Registry:
-    _groups = attr.ib(init=False, factory=dict)
+    _groups: dict = field(init=False, default_factory=dict)
 
     def get(self, key: SampleKey):
         return self._groups.get(key)

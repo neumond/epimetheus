@@ -1,8 +1,7 @@
 from collections import deque
+from dataclasses import dataclass, field
 from math import ceil, floor
-from typing import Tuple
-
-import attr
+from typing import List, Tuple
 
 from .sample import SampleKey, SampleValue, clock
 
@@ -12,27 +11,27 @@ from .sample import SampleKey, SampleValue, clock
 __all__ = ('Counter', 'Gauge', 'Histogram', 'Summary')
 
 
-@attr.s
+@dataclass
 class MetricWithTimestamp:
-    _use_clock: bool = attr.ib(default=True)
-    _reclock_if_changed: bool = attr.ib(default=False)
-    _ts = attr.ib(init=False, default=None)
+    use_clock: bool = True
+    reclock_if_changed: bool = False
+    _ts: float = field(init=False, default=None)
 
-    def __attrs_post_init__(self):
+    def __post_init__(self):
         self._update_ts(1)
 
     def _update_ts(self, vdiff):
-        if not self._use_clock:
+        if not self.use_clock:
             return
-        if (not self._reclock_if_changed) or vdiff:
+        if (not self.reclock_if_changed) or vdiff:
             self._ts = clock()
 
 
-@attr.s
+@dataclass
 class Counter(MetricWithTimestamp):
     TYPE = 'counter'
 
-    _count = attr.ib(init=False, default=0)
+    _count: float = field(init=False, default=0)
 
     def inc(self, delta: float = 1):
         assert delta >= 0
@@ -46,11 +45,11 @@ class Counter(MetricWithTimestamp):
         yield SampleValue(self._count, self._ts)
 
 
-@attr.s
+@dataclass
 class Gauge(MetricWithTimestamp):
     TYPE = 'gauge'
 
-    _value = attr.ib(init=False, default=0)
+    _value: float = field(init=False, default=0)
 
     def inc(self, delta: float = 1):
         self._value += delta
@@ -83,23 +82,24 @@ def to_sorted_tuple(x):
     return tuple(sorted(x))
 
 
-@attr.s
+@dataclass
 class Histogram:
     TYPE = 'histogram'
     RESERVED_LABELS = frozenset(['le'])
 
-    _buckets: Tuple[float] = attr.ib(converter=to_sorted_tuple)
-    _bcounts = attr.ib(init=False)
-    _inf_bcount = attr.ib(init=False, default=0)
-    _sum = attr.ib(init=False, default=0)
-    _count = attr.ib(init=False, default=0)
+    buckets: Tuple[float]
+    _bcounts: List[int] = field(init=False)
+    _inf_bcount: int = field(init=False, default=0)
+    _sum: float = field(init=False, default=0)
+    _count: int = field(init=False, default=0)
 
-    def __attrs_post_init__(self):
-        self._bcounts = [0 for _ in self._buckets]
+    def __post_init__(self):
+        self.buckets = to_sorted_tuple(self.buckets)
+        self._bcounts = [0 for _ in self.buckets]
 
     def observe(self, value: float):
         # TODO: optimize, use bisect
-        for index, upper in enumerate(self._buckets):
+        for index, upper in enumerate(self.buckets):
             if value <= upper:
                 self._bcounts[index] += 1
                 break
@@ -110,7 +110,7 @@ class Histogram:
 
     def sample_group(self, skey: SampleKey):
         bkey = skey.with_suffix('_bucket')
-        for b in self._buckets:
+        for b in self.buckets:
             yield bkey.with_labels(le=b)
         yield bkey.with_labels(le='+Inf')
         yield skey.with_suffix('_sum')
@@ -124,24 +124,23 @@ class Histogram:
         yield SampleValue(self._count)
 
 
-@attr.s
+@dataclass
 class Summary:
     TYPE = 'summary'
     RESERVED_LABELS = frozenset(['quantile'])
 
-    # TODO: validate range 0..1
-    _buckets: Tuple[float] = attr.ib(converter=to_sorted_tuple)
-    _time_window: float = attr.ib(default=3600)
-    _samples = attr.ib(init=False, factory=deque)
+    buckets: Tuple[float]
+    time_window: float = 3600
+    _samples: deque = field(init=False, default_factory=deque)
 
-    @_buckets.validator
-    def _validate_buckets(self, attribute, value):
-        for x in value:
-            if not (0 <= x <= 1):
+    def __post_init__(self):
+        for b in self.buckets:
+            if not (0 <= b <= 1):
                 raise ValueError('Quantiles must be in range 0..1')
+        self.buckets = to_sorted_tuple(self.buckets)
 
     def _clean_old_samples(self):
-        before = clock() - int(self._time_window * 1000)
+        before = clock() - int(self.time_window * 1000)
         while self._samples and self._samples[0].timestamp <= before:
             self._samples.popleft()
 
@@ -150,7 +149,7 @@ class Summary:
         self._clean_old_samples()
 
     def sample_group(self, skey: SampleKey):
-        for b in self._buckets:
+        for b in self.buckets:
             yield skey.with_labels(quantile=b)
         yield skey.with_suffix('_sum')
         yield skey.with_suffix('_count')
@@ -165,7 +164,7 @@ class Summary:
         n = len(ss)
         ss.append(ss[-1])
 
-        for qp in self._buckets:
+        for qp in self.buckets:
             k = (n - 1) * qp
             f, c = floor(k), ceil(k)
             if f == c:
@@ -184,31 +183,31 @@ class Summary:
         yield SampleValue(n)
 
 
-@attr.s
+@dataclass
 class Group:
-    _key: SampleKey = attr.ib()
-    _mcls: type = attr.ib()
-    _args: tuple = attr.ib(default=())
-    _kwargs: dict = attr.ib(factory=dict)
-    _help: str = attr.ib(default=None)
+    key: SampleKey
+    mcls: type
+    args: tuple = ()
+    kwargs: dict = field(default_factory=dict)
+    help: str = None
 
-    _items: dict = attr.ib(init=False, factory=dict)
-    _rendered_keys: dict = attr.ib(init=False, factory=dict)
+    _items: dict = field(init=False, default_factory=dict)
+    _rendered_keys: dict = field(init=False, default_factory=dict)
 
     def with_labels(self, **labels):
-        k = self._key.with_labels(**labels)
+        k = self.key.with_labels(**labels)
         if k in self._items:
             return self._items[k]
         # TODO: RESERVED_LABELS
-        m = self._mcls(*self._args, **self._kwargs)
+        m = self.mcls(*self.args, **self.kwargs)
         self._items[k] = m
         self._rendered_keys[k] = tuple(rk.expose() for rk in m.sample_group(k))
         return m
 
     def expose_header(self):
-        if self._help is not None:
-            yield f'# HELP {self._help}'
-        yield f'# TYPE {self._key.name} {self._mcls.TYPE}'
+        if self.help is not None:
+            yield f'# HELP {self.help}'
+        yield f'# TYPE {self.key.name} {self.mcls.TYPE}'
 
     def expose(self):
         he = False

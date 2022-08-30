@@ -4,3 +4,4 @@ __pypackages__/
 /.pytest_cache/
 /*.egg-info/
 /dist/
+_*.txt

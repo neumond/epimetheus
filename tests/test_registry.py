@@ -20,7 +20,9 @@ def test_all_at_once(frozen_sample_time):
 
     assert list(registry.expose()) == [
         '# TYPE http_requests_total counter',
-        'http_requests_total{method="post",code="200"} 1027 ' + f'{frozen_sample_time}',
-        'http_requests_total{method="post",code="400"} 3 ' + f'{frozen_sample_time}',
+        'http_requests_total{method="post",code="200"} 1027 '
+        + f'{frozen_sample_time}',
+        'http_requests_total{method="post",code="400"} 3 '
+        + f'{frozen_sample_time}',
         '',
     ]
