@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, MISSING
+from dataclasses import dataclass, field
 from typing import Dict
 
 from . import metrics
@@ -10,9 +10,9 @@ __all__ = ('Registry', )
 def _create_builder(mcls):
     def builder(
         self,
-        *,
         name: str,
-        labels: Dict[str, str] = MISSING,
+        *,
+        labels: Dict[str, str] = None,
         help: str = None,
         **kwargs,
     ):

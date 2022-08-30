@@ -11,15 +11,10 @@ METRIC_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
-def convert_labels(value):
-    return {k: str(v) for k, v in value.items()}
-
-
 @dataclass(eq=True, frozen=True)
 class SampleKey:
     name: str = field(compare=False, repr=False)
-    labels: Dict[str, str] = field(
-        default_factory=dict, compare=False, repr=False)
+    labels: Dict[str, str] = field(default=None, compare=False, repr=False)
     _line: str = field(init=False, compare=False, repr=True)
     _cmp_line: str = field(init=False, compare=True, repr=False)
 
@@ -27,13 +22,18 @@ class SampleKey:
         if METRIC_NAME_RE.fullmatch(self.name) is None:
             raise ValueError('Invalid sample name')
 
-        object.__setattr__(self, 'labels', convert_labels(self.labels))
-        for k, v in self.labels.items():
-            if k.startswith('__'):
-                raise ValueError(
-                    'Label names starting with __ are reserved by Prometheus')
-            if LABEL_NAME_RE.fullmatch(k) is None:
-                raise ValueError('Invalid label name')
+        clab = {}
+        if self.labels is not None:
+            for k, v in self.labels.items():
+                v = str(v)
+                if k.startswith('__'):
+                    raise ValueError(
+                        'Label names starting with __ '
+                        'are reserved by Prometheus')
+                if LABEL_NAME_RE.fullmatch(k) is None:
+                    raise ValueError('Invalid label name')
+                clab[k] = v
+        object.__setattr__(self, 'labels', clab)
 
         # TODO: need this difference?
         object.__setattr__(
